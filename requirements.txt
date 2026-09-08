@@ -1,0 +1,7 @@
+xiangqi>=1.0.5
+numpy
+openai
+google-generativeai
+anthropic
+flask
+flask-socketio

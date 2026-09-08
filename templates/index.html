@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Chinese Chess Arena</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --surface2: #0f3460;
+    --text: #e0e0e0;
+    --text-dim: #8899aa;
+    --red: #e74c3c;
+    --red-bg: #3d1515;
+    --black-piece: #2c3e50;
+    --accent: #00d2ff;
+    --gold: #f39c12;
+    --green: #2ecc71;
+    --board-bg: #d4a574;
+    --board-line: #8b6914;
+    --board-light: #e8c98e;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  header {
+    text-align: center;
+    padding: 20px;
+    border-bottom: 1px solid var(--surface2);
+  }
+  header h1 { font-size: 1.5rem; letter-spacing: 2px; }
+  header h1 span { color: var(--accent); }
+
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    display: grid;
+    grid-template-columns: 1fr 380px 1fr;
+    gap: 20px;
+  }
+
+  @media (max-width: 900px) {
+    .container {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .panel {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid var(--surface2);
+  }
+
+  .panel h2 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+  }
+
+  /* --- Board --- */
+  .board-area { display: flex; flex-direction: column; align-items: center; }
+
+  .player-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    width: 100%;
+    margin: 6px 0;
+    background: var(--surface);
+    border: 1px solid var(--surface2);
+  }
+  .player-bar.active { border-color: var(--accent); box-shadow: 0 0 8px rgba(0,210,255,0.3); }
+  .player-bar .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .player-bar .dot.red { background: var(--red); }
+  .player-bar .dot.black { background: #555; }
+  .player-bar .name { font-weight: 600; flex: 1; }
+  .player-bar .status { font-size: 0.8rem; color: var(--text-dim); }
+  .player-bar .status.thinking { color: var(--gold); }
+
+  .board-grid {
+    display: grid;
+    grid-template-columns: 24px repeat(9, 36px);
+    grid-template-rows: repeat(10, 36px) 24px;
+    gap: 0;
+    background: var(--board-bg);
+    padding: 8px;
+    border-radius: 8px;
+    border: 3px solid var(--board-line);
+    position: relative;
+  }
+
+  .board-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    font-weight: 700;
+    width: 36px;
+    height: 36px;
+    position: relative;
+    z-index: 2;
+  }
+
+  .board-cell.piece {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid;
+    cursor: default;
+    font-size: 0.95rem;
+    margin: 2px;
+  }
+  .board-cell.piece.red-piece {
+    background: #fff8f0;
+    color: #c0392b;
+    border-color: #c0392b;
+  }
+  .board-cell.piece.black-piece {
+    background: #fff8f0;
+    color: #2c3e50;
+    border-color: #2c3e50;
+  }
+  .board-cell.piece.last-move {
+    box-shadow: 0 0 0 3px var(--accent);
+  }
+
+  .row-label, .col-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    color: var(--board-line);
+    font-weight: 600;
+  }
+
+  /* --- Move log --- */
+  .move-log {
+    max-height: 500px;
+    overflow-y: auto;
+    font-size: 0.85rem;
+  }
+  .move-log::-webkit-scrollbar { width: 4px; }
+  .move-log::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 2px; }
+
+  .move-entry {
+    display: flex;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    margin-bottom: 2px;
+  }
+  .move-entry:hover { background: var(--surface2); }
+  .move-entry .turn-num { color: var(--text-dim); min-width: 24px; text-align: right; }
+  .move-entry .move-color { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+  .move-entry .move-color.red { background: var(--red); }
+  .move-entry .move-color.black { background: #555; }
+  .move-entry .move-text { flex: 1; }
+  .move-entry .move-coord { color: var(--accent); font-family: monospace; }
+  .move-entry .move-thinking {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    margin-top: 2px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .illegal-badge {
+    background: var(--red);
+    color: white;
+    font-size: 0.65rem;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-left: 4px;
+  }
+
+  /* --- Stats --- */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .stat-card {
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+  }
+  .stat-card .value { font-size: 1.3rem; font-weight: 700; color: var(--accent); }
+  .stat-card .label { font-size: 0.7rem; color: var(--text-dim); margin-top: 2px; }
+
+  .game-history {
+    font-size: 0.8rem;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  .game-result {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 8px;
+    border-radius: 6px;
+    margin-bottom: 2px;
+  }
+  .game-result:hover { background: var(--surface2); }
+  .game-result .winner-red { color: var(--red); }
+  .game-result .winner-black { color: #aaa; }
+  .game-result .winner-draw { color: var(--gold); }
+
+  /* --- Start screen --- */
+  .start-screen {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 60px 20px;
+  }
+  .start-btn {
+    background: linear-gradient(135deg, var(--accent), #0078aa);
+    color: white;
+    border: none;
+    padding: 14px 40px;
+    font-size: 1.1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    margin-top: 20px;
+    transition: transform 0.1s;
+  }
+  .start-btn:hover { transform: scale(1.05); }
+  .start-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  /* --- Report modal --- */
+  .report-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .report-overlay.show { display: flex; }
+  .report-box {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 800px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    border: 1px solid var(--surface2);
+  }
+  .report-box pre {
+    white-space: pre-wrap;
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+  .close-btn {
+    float: right;
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 1.5rem;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>♟ AI <span>Chinese Chess</span> Arena</h1>
+</header>
+
+<div class="container" id="app">
+  <!-- Start screen -->
+  <div class="start-screen" id="startScreen">
+    <p style="font-size:3rem; margin-bottom:10px">♜ ♞ ♝</p>
+    <h2 style="font-size:1.3rem; margin-bottom:8px">AI 象棋競技場</h2>
+    <p style="color:var(--text-dim)">3 models. Round-robin. 30 games. Who plays best?</p>
+    <button class="start-btn" id="startBtn" onclick="startTournament()">Start Tournament</button>
+  </div>
+
+  <!-- Left: Stats -->
+  <div class="panel" id="statsPanel" style="display:none">
+    <h2>Tournament Stats</h2>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="value" id="gamesPlayed">0</div>
+        <div class="label">Games Played</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" id="totalMoves">0</div>
+        <div class="label">Total Moves</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" id="illegalMoves">0</div>
+        <div class="label">Illegal Moves</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" id="currentGame">-</div>
+        <div class="label">Current Game</div>
+      </div>
+    </div>
+
+    <h2>Game History</h2>
+    <div class="game-history" id="gameHistory"></div>
+  </div>
+
+  <!-- Center: Board -->
+  <div class="board-area" id="boardPanel" style="display:none">
+    <div class="player-bar" id="blackBar">
+      <div class="dot black"></div>
+      <div class="name" id="blackName">—</div>
+      <div class="status" id="blackStatus"></div>
+    </div>
+
+    <div class="board-grid" id="boardGrid"></div>
+
+    <div class="player-bar" id="redBar">
+      <div class="dot red"></div>
+      <div class="name" id="redName">—</div>
+      <div class="status" id="redStatus"></div>
+    </div>
+  </div>
+
+  <!-- Right: Move log -->
+  <div class="panel" id="movePanel" style="display:none">
+    <h2>Move Log</h2>
+    <div class="move-log" id="moveLog"></div>
+  </div>
+</div>
+
+<!-- Report overlay -->
+<div class="report-overlay" id="reportOverlay">
+  <div class="report-box">
+    <button class="close-btn" onclick="document.getElementById('reportOverlay').classList.remove('show')">&times;</button>
+    <h2 style="margin-bottom:12px">Tournament Report</h2>
+    <pre id="reportContent"></pre>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+const socket = io();
+
+let state = {
+  gamesPlayed: 0,
+  totalMoves: 0,
+  illegalMoves: 0,
+  lastMove: null,
+};
+
+const RED_PIECES = {'帥':1,'仕':1,'相':1,'傌':1,'俥':1,'炮':1,'兵':1};
+const BLACK_PIECES = {'將':1,'士':1,'象':1,'馬':1,'車':1,'砲':1,'卒':1};
+
+function startTournament() {
+  document.getElementById('startScreen').style.display = 'none';
+  document.getElementById('statsPanel').style.display = '';
+  document.getElementById('boardPanel').style.display = '';
+  document.getElementById('movePanel').style.display = '';
+  document.getElementById('startBtn').disabled = true;
+  socket.emit('start_tournament');
+}
+
+function renderBoard(asciiBoard) {
+  const grid = document.getElementById('boardGrid');
+  grid.innerHTML = '';
+
+  const lines = asciiBoard.trim().split('\n');
+  // lines[0] = "  a  b  c  d  e  f  g  h  i"
+  // lines[1..10] = "9 車 馬 象 ..."
+
+  const cols = ['a','b','c','d','e','f','g','h','i'];
+
+  for (let r = 0; r < 10; r++) {
+    const line = lines[r + 1];
+    const row = line.substring(0, 1);
+    const pieces = line.substring(2).split(/\s+/).filter(Boolean);
+
+    // Row label
+    const rl = document.createElement('div');
+    rl.className = 'row-label';
+    rl.textContent = row;
+    grid.appendChild(rl);
+
+    for (let c = 0; c < 9; c++) {
+      const cell = document.createElement('div');
+      const ch = pieces[c] || '．';
+
+      if (ch === '．') {
+        cell.className = 'board-cell';
+        cell.textContent = '';
+      } else {
+        cell.className = 'board-cell piece';
+        cell.textContent = ch;
+        if (RED_PIECES[ch]) cell.classList.add('red-piece');
+        else if (BLACK_PIECES[ch]) cell.classList.add('black-piece');
+
+        // Highlight last move destination
+        if (state.lastMove) {
+          const dstCol = state.lastMove.charCodeAt(2) - 'a'.charCodeAt(0);
+          const dstRow = 9 - parseInt(state.lastMove[3]);
+          if (r === dstRow && c === dstCol) {
+            cell.classList.add('last-move');
+          }
+        }
+      }
+      grid.appendChild(cell);
+    }
+  }
+
+  // Bottom col labels
+  const spacer = document.createElement('div');
+  spacer.className = 'col-label';
+  grid.appendChild(spacer);
+  for (let c = 0; c < 9; c++) {
+    const cl = document.createElement('div');
+    cl.className = 'col-label';
+    cl.textContent = cols[c];
+    grid.appendChild(cl);
+  }
+}
+
+function updateStats() {
+  document.getElementById('gamesPlayed').textContent = state.gamesPlayed;
+  document.getElementById('totalMoves').textContent = state.totalMoves;
+  document.getElementById('illegalMoves').textContent = state.illegalMoves;
+}
+
+socket.on('tournament_start', (data) => {
+  document.getElementById('currentGame').textContent = `0/${data.total_games}`;
+});
+
+socket.on('game_start', (data) => {
+  document.getElementById('redName').textContent = data.red;
+  document.getElementById('blackName').textContent = data.black;
+  document.getElementById('redStatus').textContent = '';
+  document.getElementById('blackStatus').textContent = '';
+  document.getElementById('redBar').classList.remove('active');
+  document.getElementById('blackBar').classList.remove('active');
+  document.getElementById('moveLog').innerHTML = '';
+  state.lastMove = null;
+  renderBoard(data.board);
+  document.getElementById('currentGame').textContent = data.game_id;
+});
+
+socket.on('thinking', (data) => {
+  const isRed = data.color === 'red';
+  document.getElementById('redBar').classList.toggle('active', isRed);
+  document.getElementById('blackBar').classList.toggle('active', !isRed);
+  const statusEl = document.getElementById(isRed ? 'redStatus' : 'blackStatus');
+  statusEl.textContent = 'thinking...';
+  statusEl.className = 'status thinking';
+  const otherEl = document.getElementById(isRed ? 'blackStatus' : 'redStatus');
+  otherEl.textContent = '';
+  otherEl.className = 'status';
+});
+
+socket.on('move', (data) => {
+  state.totalMoves++;
+  state.lastMove = data.move;
+  renderBoard(data.board);
+  updateStats();
+
+  // Clear thinking status
+  document.getElementById('redStatus').textContent = '';
+  document.getElementById('redStatus').className = 'status';
+  document.getElementById('blackStatus').textContent = '';
+  document.getElementById('blackStatus').className = 'status';
+  document.getElementById('redBar').classList.remove('active');
+  document.getElementById('blackBar').classList.remove('active');
+
+  // Add to move log
+  const log = document.getElementById('moveLog');
+  const entry = document.createElement('div');
+  entry.className = 'move-entry';
+
+  let illegalBadge = '';
+  if (data.illegal_attempts > 0) {
+    illegalBadge = `<span class="illegal-badge">${data.illegal_attempts} illegal</span>`;
+  }
+
+  let thinkingHtml = '';
+  if (data.thinking) {
+    const truncated = data.thinking.length > 120
+      ? data.thinking.substring(0, 120) + '...'
+      : data.thinking;
+    thinkingHtml = `<div class="move-thinking">${escapeHtml(truncated)}</div>`;
+  }
+
+  entry.innerHTML = `
+    <div class="turn-num">${data.turn}</div>
+    <div class="move-color ${data.color}"></div>
+    <div class="move-text">
+      <span class="move-coord">${data.move}</span>
+      <span>${escapeHtml(data.description)}</span>
+      ${illegalBadge}
+      ${thinkingHtml}
+    </div>
+  `;
+  log.appendChild(entry);
+  log.scrollTop = log.scrollHeight;
+});
+
+socket.on('illegal_move', (data) => {
+  state.illegalMoves++;
+  updateStats();
+});
+
+socket.on('game_end', (data) => {
+  state.gamesPlayed++;
+  updateStats();
+
+  const history = document.getElementById('gameHistory');
+  const entry = document.createElement('div');
+  entry.className = 'game-result';
+
+  let winnerClass, winnerText;
+  if (data.winner === 'red') {
+    winnerClass = 'winner-red';
+    winnerText = `${data.red} wins`;
+  } else if (data.winner === 'black') {
+    winnerClass = 'winner-black';
+    winnerText = `${data.black} wins`;
+  } else {
+    winnerClass = 'winner-draw';
+    winnerText = 'Draw';
+  }
+
+  entry.innerHTML = `
+    <span>#${data.game_id} ${data.red} vs ${data.black}</span>
+    <span class="${winnerClass}">${winnerText} (${data.total_moves})</span>
+  `;
+  history.insertBefore(entry, history.firstChild);
+});
+
+socket.on('tournament_end', (data) => {
+  document.getElementById('reportContent').textContent = data.report;
+  document.getElementById('reportOverlay').classList.add('show');
+  document.getElementById('currentGame').textContent = 'Done';
+});
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+</script>
+
+</body>
+</html>
