@@ -1,7 +1,7 @@
 MODELS = [
     {"name": "gpt-6", "provider": "openai", "model_id": "gpt-6"},
     {"name": "gemini-3.8-flash", "provider": "google", "model_id": "gemini-3.8-flash"},
-    {"name": "claude-opus-5.1", "provider": "anthropic", "model_id": "claude-opus-5-1"},
+    {"name": "claude-via-cc", "provider": "claude-code", "model_id": "claude-code"},
 ]
 
 GAMES_PER_PAIR = 10

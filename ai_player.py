@@ -1,5 +1,6 @@
 import json
 import re
+import subprocess
 
 from config import SYSTEM_PROMPT, MOVE_PROMPT_TEMPLATE, RETRY_PROMPT_TEMPLATE
 
@@ -91,6 +92,8 @@ class AIPlayer:
         elif self.provider == "anthropic":
             import anthropic
             self._client = anthropic.Anthropic()
+        elif self.provider == "claude-code":
+            self._client = True
         return self._client
 
     def _call_api(self, messages: list[dict]) -> str:
@@ -142,6 +145,23 @@ class AIPlayer:
                 temperature=0.7,
             )
             return response.content[0].text
+
+        elif self.provider == "claude-code":
+            system = ""
+            user_text = ""
+            for msg in messages:
+                if msg["role"] == "system":
+                    system = msg["content"]
+                else:
+                    user_text = msg["content"]
+            full_prompt = f"{system}\n\n{user_text}" if system else user_text
+            result = subprocess.run(
+                ["claude", "-p", "--output-format", "text", full_prompt],
+                capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"claude -p failed: {result.stderr}")
+            return result.stdout
 
     def get_move(self, board_ascii: str, valid_actions: list[str],
                  move_history: list[dict], color: str) -> dict:
