@@ -41,9 +41,43 @@ def _build_retry_prompt(invalid_move: str, valid_actions: list[str]) -> str:
     )
 
 
+def _parse_claude_stream_json(output: str) -> tuple[str, str]:
+    """Parse claude -p --output-format stream-json, return (thinking, text)."""
+    thinking_parts = []
+    text_parts = []
+    for line in output.strip().split('\n'):
+        try:
+            msg = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if msg.get("type") == "assistant":
+            for block in msg.get("message", {}).get("content", []):
+                if block.get("type") == "thinking":
+                    t = block.get("thinking", "")
+                    if t:
+                        thinking_parts.append(t)
+                elif block.get("type") == "text":
+                    text_parts.append(block.get("text", ""))
+        elif msg.get("type") == "result":
+            if not text_parts and msg.get("result"):
+                text_parts.append(msg["result"])
+    thinking = "\n".join(thinking_parts)
+    text = "\n".join(text_parts) if text_parts else output
+    return thinking, text
+
+
+def _extract_thinking_generic(output: str) -> tuple[str, str]:
+    """Extract thinking from generic CLI output (codex/gemini)."""
+    match = re.search(r'<thinking>(.*?)</thinking>', output, re.DOTALL)
+    if match:
+        thinking = match.group(1).strip()
+        remaining = output[:match.start()] + output[match.end():]
+        return thinking, remaining.strip()
+    return "", output
+
+
 def _parse_response(text: str) -> dict:
     """Extract {thinking, move} from AI response text."""
-    # Try direct JSON parse
     try:
         data = json.loads(text)
         if "move" in data:
@@ -51,7 +85,6 @@ def _parse_response(text: str) -> dict:
     except json.JSONDecodeError:
         pass
 
-    # Try extracting JSON from markdown code block
     match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
     if match:
         try:
@@ -61,7 +94,6 @@ def _parse_response(text: str) -> dict:
         except json.JSONDecodeError:
             pass
 
-    # Try finding any JSON object in text
     match = re.search(r'\{[^{}]*"move"\s*:\s*"[^"]*"[^{}]*\}', text)
     if match:
         try:
@@ -79,6 +111,7 @@ class AIPlayer:
         self.provider = config["provider"]
         self.model_id = config["model_id"]
         self._client = None
+        self._native_thinking = ""
 
     def _get_client(self):
         if self._client is not None:
@@ -92,16 +125,13 @@ class AIPlayer:
         elif self.provider == "anthropic":
             import anthropic
             self._client = anthropic.Anthropic()
-        elif self.provider == "claude-code":
-            self._client = True
-        elif self.provider == "codex":
-            self._client = True
-        elif self.provider == "gemini-cli":
+        elif self.provider in ("claude-code", "codex", "gemini-cli"):
             self._client = True
         return self._client
 
     def _call_api(self, messages: list[dict]) -> str:
         client = self._get_client()
+        self._native_thinking = ""
 
         if self.provider == "openai":
             response = client.chat.completions.create(
@@ -160,9 +190,9 @@ class AIPlayer:
                     user_text = msg["content"]
             full_prompt = f"{system}\n\n{user_text}" if system else user_text
             cli_cmds = {
-                "claude-code": ["claude", "-p", "--output-format", "text", full_prompt],
-                "codex": ["codex", "-q", full_prompt],
-                "gemini-cli": ["gemini", "-p", full_prompt],
+                "claude-code": ["claude", "-p", "--output-format", "stream-json", full_prompt],
+                "codex": ["codex", "-q", "--reasoning", "summary", full_prompt],
+                "gemini-cli": ["gemini", "-p", "--think", full_prompt],
             }
             result = subprocess.run(
                 cli_cmds[self.provider],
@@ -171,7 +201,22 @@ class AIPlayer:
             if result.returncode != 0:
                 cli = cli_cmds[self.provider][0]
                 raise RuntimeError(f"{cli} failed: {result.stderr}")
-            return result.stdout
+            if self.provider == "claude-code":
+                thinking, text = _parse_claude_stream_json(result.stdout)
+            else:
+                thinking, text = _extract_thinking_generic(result.stdout)
+            self._native_thinking = thinking
+            return text
+
+    def _merge_thinking(self, result: dict) -> dict:
+        """Merge native model thinking into the parsed result."""
+        if self._native_thinking:
+            prompted = result.get("thinking", "")
+            if prompted:
+                result["thinking"] = f"[Model reasoning]\n{self._native_thinking}\n\n[Move analysis]\n{prompted}"
+            else:
+                result["thinking"] = self._native_thinking
+        return result
 
     def get_move(self, board_ascii: str, valid_actions: list[str],
                  move_history: list[dict], color: str) -> dict:
@@ -182,7 +227,7 @@ class AIPlayer:
         ]
         try:
             raw = self._call_api(messages)
-            return _parse_response(raw)
+            return self._merge_thinking(_parse_response(raw))
         except Exception as e:
             return {"thinking": f"API error: {e}", "move": None}
 
@@ -194,6 +239,6 @@ class AIPlayer:
         ]
         try:
             raw = self._call_api(messages)
-            return _parse_response(raw)
+            return self._merge_thinking(_parse_response(raw))
         except Exception as e:
             return {"thinking": f"API error: {e}", "move": None}
