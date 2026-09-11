@@ -1,5 +1,5 @@
 MODELS = [
-    {"name": "gpt-6", "provider": "openai", "model_id": "gpt-6"},
+    {"name": "gpt-via-codex", "provider": "codex", "model_id": "codex"},
     {"name": "gemini-3.8-flash", "provider": "google", "model_id": "gemini-3.8-flash"},
     {"name": "claude-via-cc", "provider": "claude-code", "model_id": "claude-code"},
 ]

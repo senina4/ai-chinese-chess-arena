@@ -94,6 +94,8 @@ class AIPlayer:
             self._client = anthropic.Anthropic()
         elif self.provider == "claude-code":
             self._client = True
+        elif self.provider == "codex":
+            self._client = True
         return self._client
 
     def _call_api(self, messages: list[dict]) -> str:
@@ -146,7 +148,7 @@ class AIPlayer:
             )
             return response.content[0].text
 
-        elif self.provider == "claude-code":
+        elif self.provider in ("claude-code", "codex"):
             system = ""
             user_text = ""
             for msg in messages:
@@ -155,12 +157,16 @@ class AIPlayer:
                 else:
                     user_text = msg["content"]
             full_prompt = f"{system}\n\n{user_text}" if system else user_text
+            if self.provider == "claude-code":
+                cmd = ["claude", "-p", "--output-format", "text", full_prompt]
+            else:
+                cmd = ["codex", "-q", full_prompt]
             result = subprocess.run(
-                ["claude", "-p", "--output-format", "text", full_prompt],
-                capture_output=True, text=True, timeout=120,
+                cmd, capture_output=True, text=True, timeout=120,
             )
             if result.returncode != 0:
-                raise RuntimeError(f"claude -p failed: {result.stderr}")
+                cli = "claude" if self.provider == "claude-code" else "codex"
+                raise RuntimeError(f"{cli} failed: {result.stderr}")
             return result.stdout
 
     def get_move(self, board_ascii: str, valid_actions: list[str],
