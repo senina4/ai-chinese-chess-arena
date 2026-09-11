@@ -1,6 +1,6 @@
 MODELS = [
     {"name": "gpt-via-codex", "provider": "codex", "model_id": "codex"},
-    {"name": "gemini-3.8-flash", "provider": "google", "model_id": "gemini-3.8-flash"},
+    {"name": "gemini-via-cli", "provider": "gemini-cli", "model_id": "gemini-cli"},
     {"name": "claude-via-cc", "provider": "claude-code", "model_id": "claude-code"},
 ]
 

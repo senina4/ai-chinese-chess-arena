@@ -96,6 +96,8 @@ class AIPlayer:
             self._client = True
         elif self.provider == "codex":
             self._client = True
+        elif self.provider == "gemini-cli":
+            self._client = True
         return self._client
 
     def _call_api(self, messages: list[dict]) -> str:
@@ -148,7 +150,7 @@ class AIPlayer:
             )
             return response.content[0].text
 
-        elif self.provider in ("claude-code", "codex"):
+        elif self.provider in ("claude-code", "codex", "gemini-cli"):
             system = ""
             user_text = ""
             for msg in messages:
@@ -157,15 +159,17 @@ class AIPlayer:
                 else:
                     user_text = msg["content"]
             full_prompt = f"{system}\n\n{user_text}" if system else user_text
-            if self.provider == "claude-code":
-                cmd = ["claude", "-p", "--output-format", "text", full_prompt]
-            else:
-                cmd = ["codex", "-q", full_prompt]
+            cli_cmds = {
+                "claude-code": ["claude", "-p", "--output-format", "text", full_prompt],
+                "codex": ["codex", "-q", full_prompt],
+                "gemini-cli": ["gemini", "-p", full_prompt],
+            }
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=120,
+                cli_cmds[self.provider],
+                capture_output=True, text=True, timeout=120,
             )
             if result.returncode != 0:
-                cli = "claude" if self.provider == "claude-code" else "codex"
+                cli = cli_cmds[self.provider][0]
                 raise RuntimeError(f"{cli} failed: {result.stderr}")
             return result.stdout
 
